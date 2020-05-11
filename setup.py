@@ -8,11 +8,10 @@ Created on Sat May  9 23:43:56 2020
 NAME = 'myfit'
 DESCRIPTION = 'just test'
 URL = 'https://github.com/lizihao1008'
-EMAIL = 'leezihao_u@126.com'    # 你的邮箱
-AUTHOR = 'Zihao Li'     # 你的名字
+EMAIL = 'leezihao_u@126.com'    
+AUTHOR = 'Zihao Li'     
 
-VERSION = '0.1'           # 项目版本号
-
+VERSION = '0.1'           
 
 def success():
     print('successful!')
