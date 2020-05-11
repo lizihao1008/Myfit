@@ -6,6 +6,5 @@ Created on Sat May  9 23:54:47 2020
 """
 from . import testx,fit
 
-
 __version__=0.1
 testx.main()
