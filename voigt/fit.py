@@ -16,7 +16,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def readdr7(file):
-    
     s = fits.open(file)
     z = s[0].header['z']
     c0=s[0].header['COEFF0']
@@ -40,15 +39,32 @@ def readdr7(file):
     
     return spec 
 
+def read_hires(name):
+    s1 = fits.open('HIRES/' + name + '_f.fits')
+    s2 = fits.open('HIRES/' + name + '_e.fits')
+
+    flux = s1[0].data
+    noise = s2[0].data
+    c0 = s1[0].header['CRVAL1']
+    c1 = s1[0].header['CDELT1']
+
+    wavelength = 10.**(c0 + c1 * np.arange(1,len(flux)+1))
+    data = pd.read_csv('ESI\z data.csv')
+    idx = data['Name'] == name
+    z = data['z_abs'][idx]
+    z = float(z)
+    restframe = wavelength/(1+z)
+    
+    return wavelength,flux,noise,z
+
 #The function of theoretical relationship among flux, velocity dispersion and column density.
 def Ilam(lam,dlam,sigma1,sigma2,N1,N2):
-    
     lam = (lam-dlam)/1e8 #Transfer angstrom to cm to be compatible with Gaussian units
-    lam1 = 1548.2/1e8
+    lam1 = 1548.195/1e8
     lam2 = 1550.77/1e8
     
-    f1 = 0.189
-    f2 = 0.095
+    f1 = 0.1908
+    f2 = 0.09522
     
     gamma1 = 2.643E+08
     gamma2 = 2.628E+08
@@ -85,6 +101,63 @@ def Ilam(lam,dlam,sigma1,sigma2,N1,N2):
     
     return profile_obs
 
+def voigt(lam,lam_center,sigma1,sigma2,N1,N2):
+    lam = lam/1e8 #Transfer angstrom to cm to be compatible with Gaussian units
+    lam1 = lam_center/1e8
+    lam2 = (lam_center+2.575)/1e8
+    
+    f1 = 0.1908
+    f2 = 0.09522
+    
+    gamma1 = 2.643E+08
+    gamma2 = 2.628E+08
+
+    sigma1 = sigma1*1e5 #Transfer km/s to cm/s
+    sigma2 = sigma2*1e5
+    
+    a1 = gamma1*lam1/4/np.pi/sigma1/2**0.5
+    a2 = gamma2*lam2/4/np.pi/sigma2/2**0.5
+    
+    c = const.c.to('cm/s').value
+    u1 = c*(lam**2-lam1**2)/(lam**2+lam1**2)/sigma1/2**0.5
+    u2 = c*(lam**2-lam2**2)/(lam**2+lam2**2)/sigma2/2**0.5
+    
+    h1 = np.exp(-u1**2)
+    h2 = np.exp(-u2**2)
+    
+    H1 = h1-a1/u1**2/np.pi**0.5*(h1**2*(4*u1**4+7*u1**2+4+1.5*u1**(-2))-1.5*u1**(-2)-1)
+    H2 = h2-a2/u2**2/np.pi**0.5*(h2**2*(4*u2**4+7*u2**2+4+1.5*u2**(-2))-1.5*u2**(-2)-1)
+    
+    phi1 = c/lam1/sigma1/(2*np.pi)**0.5*H1
+    phi2 = c/lam2/sigma2/(2*np.pi)**0.5*H2
+    
+    tau1 = (np.pi*const.e.esu**2/const.m_e.to('g')/c**2).value*f1*lam1**2*phi1*N1
+    tau2 = (np.pi*const.e.esu**2/const.m_e.to('g')/c**2).value*f2*lam2**2*phi2*N2
+    tau = tau1+tau2
+    
+    return tau
+
+def Itau(lam,tau):
+    I = np.exp(-tau)
+    kernel = 2/2.35482
+    a = int(10*kernel) + 21
+    LSF = gaussian(a, kernel)
+    LSF = LSF/LSF.sum()
+    profile_broad = fftconvolve(I, LSF, 'valid')
+    profile_obs = np.interp(lam, lam[a//2:-a//2+1], profile_broad,left=1,right=1)
+    
+    return profile_obs
+
+def multicomponet(lam,*paras):
+    tau = np.zeros_like(lam)
+    paras = np.array(paras)
+    p = paras.reshape(len(paras)//5,5)
+    
+    for i in range(len(p)):
+        tau = tau + voigt(lam,*p[i,:])
+        
+    return Itau(lam,tau)
+
 def select_range(line,spec):
     linedata = pd.read_csv('lines.csv')
     idx = linedata['lines']==line
@@ -93,8 +166,24 @@ def select_range(line,spec):
     
     return idx2
 
-def normal_spec(flux,noise,spec,line):
+def set_bounds(paras,lam_center=(-0.2,0.2),sigma1=(6,80),sigma2=(6,80),N1=(1e10,1e18),N2=(1e10,1e18)):
+    bounds_bottom = np.zeros_like(paras)
+    bounds_bottom[:,0] = paras[:,0]+lam_center[0]
+    bounds_bottom[:,1] = sigma1[0]
+    bounds_bottom[:,2] = sigma2[0]
+    bounds_bottom[:,3] = N1[0]
+    bounds_bottom[:,4] = N2[0]
+    bounds_top = np.zeros_like(paras)
+    bounds_top[:,0] = paras[:,0]+lam_center[1]
+    bounds_top[:,1] = sigma1[1]
+    bounds_top[:,2] = sigma2[1]
+    bounds_top[:,3] = N2[1]
+    bounds_top[:,4] = N2[1]
+    bounds = (bounds_bottom.flatten(),bounds_top.flatten())
     
+    return bounds
+
+def normal_spec(flux,noise,spec,line):
     linedata = pd.read_csv('lines.csv')
     idx = linedata['lines']==line
     center = float(linedata['wavelength'][idx])
@@ -109,7 +198,6 @@ def normal_spec(flux,noise,spec,line):
 
 def plotlines(spec,*names):
     linedata = pd.read_csv('lines.csv')
-
     fig = plt.figure(figsize=(20,5))
     ax = fig.add_subplot(111)
     ax.plot(spec.restframe, spec.flux)
@@ -169,10 +257,8 @@ def compute_N(spec,line):
     ax2.set_ylim(-0.55,0.7)
     # ax1.set_xlim(1540,1565)
     # ax2.set_xlim(1540,1565)
-
     ax1.grid()
     ax2.grid()
-
     plt.savefig('column density fitting of '+spec.name.split('.')[0]+'.png')
     
     return
