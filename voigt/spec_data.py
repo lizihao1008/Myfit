@@ -100,21 +100,25 @@ class spec_data(object):
         p[:,3:5] = N
         return p
     
-    def fit(self,line,span=3,sigma=20,N=1e14):
+    def fit(self,line,span=3,sigma=20,N=1e14,mask=False):
         
         idx = self.select_range(line,span)
         wave = self.spec.restframe[idx]
         f = self.spec.flux[idx]
         noise = self.spec.noise[idx]
         lam = np.linspace(min(wave),max(wave),500)
-        self.add_mask('C IV',span)
+        
+        if mask:
+            self.add_mask('C IV',span)
+
         plt.close()
         paras = self.initial_guess(line,span,sigma,N)
         p = paras.flatten()
         bounds = ft.set_bounds(paras)
         popt,pcov = curve_fit(ft.multicomponet,wave,f,p0=p, bounds = bounds,sigma=noise)
         paras_fit = popt.reshape(len(popt)//5,5)
-
+        plt.vlines(paras_fit[:,0],1,1.08,color = 'blue',linestyle='--')
+        plt.vlines(paras_fit[:,0]+2.575,1,1.08,color = 'blue',linestyle='--')
         print('N1=%.3f'%np.log10(sum(paras_fit[:,3])))
         print('N2=%.3f'%np.log10(sum(paras_fit[:,4])))
         plt.plot(lam,ft.multicomponet(lam,*popt))
