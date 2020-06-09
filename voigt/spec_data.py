@@ -170,8 +170,4 @@ class spec_data(object):
             plt.show()
 
         return paras_fit,pcov,paras[:,0]
-    
-
-# z = z
-# r = r
 
