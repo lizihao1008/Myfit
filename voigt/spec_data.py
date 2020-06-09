@@ -15,6 +15,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from . import fit as ft
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 mpl.use('Tkagg')
 
 class spec_data(object):
@@ -28,7 +30,7 @@ class spec_data(object):
         wavelength = np.array(wavelength)
         flux = np.array(flux)
         noise = np.array(noise)
-        
+
         self.spec.wavelength = wavelength
         self.spec.flux = np.array(flux)
         self.spec.noise = np.array(noise)
@@ -49,7 +51,7 @@ class spec_data(object):
         idx = self.select_range(line,span)
         fig = plt.figure(figsize=(10,6))
         ax = fig.add_subplot(111)
-        ax.plot(self.spec.restframe[idx],self.spec.flux[idx])
+        ax.plot(self.spec.restframe[idx],self.spec.flux[idx],color='black',drawstyle='steps-mid')
 #         plt.show()
 #         plt.ioff()
         return ax
@@ -92,16 +94,23 @@ class spec_data(object):
                 plt.close()
                 break
 
-    def initial_guess(self,line,span=3,sigma=20,N=1e14):
-        lam_center = self.select_component(line,span)
+    def initial_guess(self,line,components='ui',span=3,sigma=20,N=1e14):
+        
+        if components is 'ui':
+            lam_center = self.select_component(line,span)
+        else:
+            lam_center = np.array(components)
         p = np.zeros((len(lam_center),5))
         p[:,0] = lam_center
         p[:,1:3] = sigma
         p[:,3:5] = N
         return p
     
-    def fit(self,line,span=3,sigma=20,N=1e14,mask=False):
-        
+    def fit(self,line,resolution,components='ui',span=3,sigma=20,N=1e14,mask=False,plot=True,print_result=True):
+        global r,z
+        r = resolution
+        z = self.spec.z
+        # print(r)
         idx = self.select_range(line,span)
         wave = self.spec.restframe[idx]
         f = self.spec.flux[idx]
@@ -110,20 +119,36 @@ class spec_data(object):
         
         if mask:
             self.add_mask('C IV',span)
-
-        plt.close()
-        paras = self.initial_guess(line,span,sigma,N)
+            plt.close()
+        paras = self.initial_guess(line,components,span,sigma,N)
+        # print(paras)
         p = paras.flatten()
         bounds = ft.set_bounds(paras)
         popt,pcov = curve_fit(ft.multicomponet,wave,f,p0=p, bounds = bounds,sigma=noise)
         paras_fit = popt.reshape(len(popt)//5,5)
-        plt.vlines(paras_fit[:,0],1,1.08,color = 'blue',linestyle='--')
-        plt.vlines(paras_fit[:,0]+2.575,1,1.08,color = 'blue',linestyle='--')
-        print('N1=%.3f'%np.log10(sum(paras_fit[:,3])))
-        print('N2=%.3f'%np.log10(sum(paras_fit[:,4])))
-        plt.plot(lam,ft.multicomponet(lam,*popt))
-        plt.show()
-
-        return paras_fit,pcov
         
+        if print_result:
+            print('lg(N1)(total)=%.3f'%np.log10(sum(paras_fit[:,3])))
+            print('lg(N2)(total)=%.3f'%np.log10(sum(paras_fit[:,4])))
+            print('--------------------')
+            for i in range(len(paras_fit)):
+                print('component %d:\n sigma1=%.3f sigma2=%.3f lg(N1)=%.3f lg(N2)=%.3f'
+                      %(i+1,paras_fit[i,1],paras_fit[i,2],np.log10(paras_fit[i,3]),np.log10(paras_fit[i,4])))
+                print('--------------------')
+        if plot:
+            if components != 'ui':
+                # mpl.use('agg')
+                ax = self.plot_spec(line,span)
+            plt.vlines(paras_fit[:,0],1,1.08,color = 'blue',linestyle='--')
+            plt.vlines(paras_fit[:,0]+2.575,1,1.08,color = 'blue',linestyle='--')
+    
+    
+            plt.plot(lam,ft.multicomponet(lam,*popt))
+            plt.show()
+
+        return paras_fit,pcov,paras[:,0]
+    
+
+# z = z
+# r = r
 

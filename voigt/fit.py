@@ -139,7 +139,12 @@ def voigt(lam,lam_center,sigma1,sigma2,N1,N2):
 
 def Itau(lam,tau):
     I = np.exp(-tau)
-    kernel = 2/2.35482
+    from myfit.voigt import spec_data
+    # import imp
+    # imp.reload(spec_data)
+    z = spec_data.z
+    r = spec_data.r
+    kernel = 1549*(1+z)/r/2.35482
     a = int(10*kernel) + 21
     LSF = gaussian(a, kernel)
     LSF = LSF/LSF.sum()
@@ -166,7 +171,7 @@ def select_range(line,spec):
     
     return idx2
 
-def set_bounds(paras,lam_center=(-0.2,0.2),sigma1=(6,80),sigma2=(6,80),N1=(1e10,1e18),N2=(1e10,1e18)):
+def set_bounds(paras,lam_center=(-0.1,0.1),sigma1=(6,80),sigma2=(6,80),N1=(1e10,1e18),N2=(1e10,1e18)):
     bounds_bottom = np.zeros_like(paras)
     bounds_bottom[:,0] = paras[:,0]+lam_center[0]
     bounds_bottom[:,1] = sigma1[0]
