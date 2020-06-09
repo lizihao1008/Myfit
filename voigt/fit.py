@@ -142,16 +142,19 @@ def Itau(lam,tau):
     from myfit.voigt import spec_data
     # import imp
     # imp.reload(spec_data)
-    z = spec_data.z
-    r = spec_data.r
-    kernel = 1549*(1+z)/r/2.35482
-    a = int(10*kernel) + 21
-    LSF = gaussian(a, kernel)
-    LSF = LSF/LSF.sum()
-    profile_broad = fftconvolve(I, LSF, 'valid')
-    profile_obs = np.interp(lam, lam[a//2:-a//2+1], profile_broad,left=1,right=1)
-    
-    return profile_obs
+    if spec_data.r:
+        z = spec_data.z
+        r = spec_data.r
+        kernel = 1549*(1+z)/r/2.35482
+        a = int(10*kernel) + 21
+        LSF = gaussian(a, kernel)
+        LSF = LSF/LSF.sum()
+        profile_broad = fftconvolve(I, LSF, 'valid')
+        profile_obs = np.interp(lam, lam[a//2:-a//2+1], profile_broad,left=1,right=1)
+        return profile_obs
+    else:
+        return I
+        
 
 def multicomponet(lam,*paras):
     tau = np.zeros_like(lam)

@@ -17,7 +17,7 @@ import matplotlib as mpl
 from . import fit as ft
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
-mpl.use('Tkagg')
+
 
 class spec_data(object):
     
@@ -36,7 +36,8 @@ class spec_data(object):
         self.spec.noise = np.array(noise)
         self.spec.z = z
         self.spec.restframe = wavelength/(1+z)
-
+        self.spec.flux_origin = np.array(flux)
+        
     def select_range(self,line,span=3):
         
         linedata = pd.read_csv('lines.csv')
@@ -46,18 +47,18 @@ class spec_data(object):
         
         return idx2
     
-    def plot_spec(self,line,span=3):
-#         plt.ion()
+    def plot_spec(self,line,span=3,out=False):
+        mpl.use('tkagg')
         idx = self.select_range(line,span)
         fig = plt.figure(figsize=(10,6))
         ax = fig.add_subplot(111)
         ax.plot(self.spec.restframe[idx],self.spec.flux[idx],color='black',drawstyle='steps-mid')
-#         plt.show()
-#         plt.ioff()
-        return ax
-    
+        if out: 
+            return ax,self.spec.restframe[idx],self.spec.flux[idx]
+        else:
+            return
     def select_component(self,line,span=3):
-        ax = self.plot_spec(line,span)
+        ax,_,_ = self.plot_spec(line,span,out=True)
         ax.set_title('Mark center(s) of component(s)',color = 'red')
         cursor = Cursor(plt.gca(), horizOn=False, color='r', lw=1)
         pos = plt.ginput(0,0)
@@ -70,7 +71,7 @@ class spec_data(object):
     
     def add_mask(self,line,span=3):
         
-        ax = self.plot_spec(line,span)
+        ax,_,_ = self.plot_spec(line,span,out=True)
         ax.set_title('Choose two points to mask bad data \n (press enter to exit if no data need to be masked)',color = 'red')
         cursor = Cursor(plt.gca(), horizOn=False, color='r', lw=1)
         idx = np.array([])
@@ -93,7 +94,24 @@ class spec_data(object):
             else:
                 plt.close()
                 break
-
+            return
+        
+    def convolve_resolution(self,resolution):
+        if isinstance(resolution,int):
+            kernel = 1549*(1+self.spec.z)/resolution/2.35482
+            a = int(10*kernel) + 21
+            LSF = gaussian(a, kernel)
+            LSF = LSF/LSF.sum()
+            profile_broad = fftconvolve(self.spec.flux_origin, LSF, 'valid')
+            self.spec.flux = np.interp(self.spec.restframe, self.spec.restframe[a//2:-a//2+1], profile_broad,left=1,right=1)
+        else:
+            raise TypeError('Type of resoluton should be integer')
+        return
+    
+    def reset_resolution(self):
+        self.spec.flux = self.spec.flux_origin
+        return
+    
     def initial_guess(self,line,components='ui',span=3,sigma=20,N=1e14):
         
         if components is 'ui':
@@ -106,11 +124,16 @@ class spec_data(object):
         p[:,3:5] = N
         return p
     
-    def fit(self,line,resolution,components='ui',span=3,sigma=20,N=1e14,mask=False,plot=True,print_result=True):
-        global r,z
-        r = resolution
-        z = self.spec.z
-        # print(r)
+    def fit(self,line,resolution=False,components='ui',span=3,sigma=20,N=1e14,mask=False,plot=True,print_result=True):
+        if resolution:
+            if isinstance(resolution,int):
+                global r,z
+                r = resolution
+                z = self.spec.z
+            else:
+                raise TypeError('Type of resoluton should be integer')
+        else:
+            r = False
         idx = self.select_range(line,span)
         wave = self.spec.restframe[idx]
         f = self.spec.flux[idx]
